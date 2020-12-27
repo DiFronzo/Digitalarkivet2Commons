@@ -6,6 +6,7 @@ from io import BytesIO
 from bs4 import BeautifulSoup
 from pywikibot.specialbots import UploadRobot
 import dateutil.parser as parser
+import pywikibot
 import requests
 import re
 import json
@@ -20,14 +21,14 @@ script_version = '1.0.0'
 class Client:
     """
         Example usage:
-            from d2c import Client
+            from d2c import Client as d2c
             import pywikibot
             commons = pywikibot.Site("commons","commons")
 
-            R = d2c.Client()
-            R.query('/fotoweb/archives/5001-Historiske-foto/?q=reinbeite*') # print(R.pages)
-                                                                            # to check what will be uploaded
-            R.upload(summary="I like to upload images from Digitalarkivet", size="tif", commons)
+            r = d2c.Client()
+            r.query('/fotoweb/archives/5001-Historiske-foto/?q=reinbeite*') # print(r.pages)
+                                                                            # to check images that will be uploaded
+            r.upload(commons, file_ending="tif", summary="I like to upload images from Digitalarkivet")
     """
 
     urlDA = 'https://foto.digitalarkivet.no'
@@ -68,7 +69,7 @@ class Client:
         "big_jpg": "/__renditions/Stor%20JPG",
     }
 
-    File_Ending = {
+    File_ending = {
         "small_jpg": ".jpg",
         "tif": ".tif",
         "big_jpg": ".jpg",
@@ -87,7 +88,7 @@ class Client:
         else:
             if requests_session:  # Build a new session.
                 self._S = requests.Session()
-            else:  # Use the Requests API module as a "session".
+            else:  # todo: Use the Requests API module as a "session".
                 raise NotImplementedError()
 
     def __dir__(self):
@@ -100,8 +101,11 @@ class Client:
         @type query: str
         @param limit: Max amount of pages to check for images.
         @type limit: int
+
+        :return: return True if success
+        :rtype: the return type bool
         """
-        url = "{}{}&p=".format(self.urlDA, query)  # for loop &p=1 til 54
+        url = "{}{}&p=".format(self.urlDA, query)  # for loop from &p=1 to max 2000
         regeximg = r"\/fotoweb\/cache\/[0-9]{0,5}\/Indekserte%20bilder\/([^.]+)"
         listfiles = []
         notend = True
@@ -116,7 +120,7 @@ class Client:
             div = soup.findAll('a', {"class": 'js-link thumbnail'})
             for htmltag in div:
                 match = re.search(regeximg, str(htmltag.find('img', {"class": 'js-image'})), re.IGNORECASE)
-                if match != None:
+                if match is not None:
                     listfiles.append(
                         '/fotoweb/archives/5001-Historiske-foto/Indekserte%20bilder/' + match.group(1) + '.tif.info')
             pagenr += 1
@@ -130,8 +134,11 @@ class Client:
         @type page_list: list
         @param size: Size for the image. Most be in "self.Size". Default "tif".
         @type size: str
+
+        :return: return True if success
+        :rtype: the return type bool
         """
-        data = {"request": {"assets": []}}  # MAX 4 IMAGES!!!
+        data = {"request": {"assets": []}}  # Takes MAX 4 images in one request!!!
         for urlimg in page_list:
             data['request']['assets'].append({'href': urlimg + self.Size[size]})
         response = self._S.post(self.urlDA + '/fotoweb/me/background-tasks/', headers=self.headersPost,
@@ -145,8 +152,11 @@ class Client:
     def _get(self, background_task):
         """
         API GET
-        @param background_task: URL from POST request. Link to all the images that is request.
+        @param background_task: part of the url for access to image
         @type background_task: str
+
+        :return: return the JSON object
+        :rtype: the return type dict
         """
         not_finished = True
         data = {}
@@ -159,16 +169,22 @@ class Client:
 
         return data
 
-    def get_metadata(self, src2, href2):
+    def get_metadata(self, src2, href2, file_ending):
         """
-        handle_upload
-        @param src2: Images file page on foto.digitalarkivet.no.
+        get_metadata
+        @param src2: Images page file on foto.digitalarkivet.no.
         @type src2: str
         @param href2: Image download link on foto.digitalarkivet.no.
         @type href2: str
+        @param file_ending: Type of image file. Valid options: tif, small_jpg or big_jpg.
+        @type file_ending: str
+
+        :return: returns a JSON object with metadata
+        :rtype: the return type dict
         """
         # CustomField1 = Originalformat, CustomField17 = Institusjon, CustomField18 = Arkivnavn, IF4b_kommentar =
-        # Tilleggsinformasjon, IF22a_aksesjonsnummer = Arkivreferanse, UserDefined223 = URN kataloginfo, UserDefined233 = Restriksjon
+        # Tilleggsinformasjon, IF22a_aksesjonsnummer = Arkivreferanse, UserDefined223 = URN kataloginfo,
+        # UserDefined233 = Restriksjon
 
         commons_data = {
             'title': '',
@@ -191,11 +207,26 @@ class Client:
             'href': self.urlDA + href2
         }
         response = self._S.get(commons_data['href'])
-        with Image.open(BytesIO(response.content)) as img:
-            meta_dict = {TAGS[key]: img.tag[key] for key in img.tag.keys()}
-            # print(meta_dict['XMP']) #DEBUG
+        meta_dict2 = ""
+        if file_ending == "tif":
+            with Image.open(BytesIO(response.content)) as img:
+                meta_dict = {TAGS[key]: img.tag[key] for key in img.tag.keys()}
+                # print(meta_dict['XMP']) #DEBUG
+                meta_dict2 = ET.fromstring(meta_dict['XMP'])
 
-        tree = ET.fromstring(meta_dict['XMP'])
+        elif file_ending == "small_jpg" or file_ending == "big_jpg":
+            with Image.open(BytesIO(response.content)) as im:
+                for segment, content in im.applist:
+                    if segment == 'APP1' and content.startswith(b'http://ns.adobe.com/xap/1.0/'):
+                        # print(content[29::]) #DEBUG
+                        meta_dict2 = ET.fromstring(content[29::])
+                        break
+        else:
+            raise TypeError(
+                f"File type {file_ending} is out of the scope"
+            )
+
+        tree = meta_dict2
 
         nmspdict = {'x': 'adobe:ns:meta/',
                     'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
@@ -205,25 +236,37 @@ class Client:
                     'photoshop': "http://ns.adobe.com/photoshop/1.0/",
                     'xmpRights': "http://ns.adobe.com/xap/1.0/rights/"}
 
-        tags = tree.findall("rdf:RDF/rdf:Description/dc:subject/rdf:Bag/rdf:li",  # Nøkkelord
+        tags = tree.findall("rdf:RDF/rdf:Description/dc:subject/rdf:Bag/rdf:li",  # Keyword
                             namespaces=nmspdict)
 
-        tags2 = tree.findall("rdf:RDF/rdf:Description/dc:title/rdf:Alt/rdf:li",  # Tittel
+        tags2 = tree.findall("rdf:RDF/rdf:Description/dc:title/rdf:Alt/rdf:li",  # Title
                              namespaces=nmspdict)
 
-        tags3 = tree.findall("rdf:RDF/rdf:Description/dc:creator/rdf:Seq/rdf:li",  # Opphavsperson
+        tags3 = tree.findall("rdf:RDF/rdf:Description/dc:creator/rdf:Seq/rdf:li",  # Creator
                              namespaces=nmspdict)
 
-        gjenbruk = tree.findall("rdf:RDF/rdf:Description/xmpRights:UsageTerms/rdf:Alt/rdf:li",  # Gjenbruk
+        gjenbruk = tree.findall("rdf:RDF/rdf:Description/xmpRights:UsageTerms/rdf:Alt/rdf:li",  # Usage terms
                                 namespaces=nmspdict)
 
-        rettigheter = tree.findall("rdf:RDF/rdf:Description/dc:rights/rdf:Alt/rdf:li",  # Rettigheter
+        rettigheter = tree.findall("rdf:RDF/rdf:Description/dc:rights/rdf:Alt/rdf:li",  # rights
                                    namespaces=nmspdict)
 
-        desc = tree.findall("rdf:RDF/rdf:Description/dc:description/rdf:Alt/rdf:li",  # Beskrivelse
+        desc = tree.findall("rdf:RDF/rdf:Description/dc:description/rdf:Alt/rdf:li",  # Description
                             namespaces=nmspdict)
 
-        for descAttri in tree.findall('rdf:RDF/rdf:Description', namespaces=nmspdict):
+        jpg_desc = tree.findall("rdf:RDF/rdf:Description",  # Description for JPGs
+                                namespaces=nmspdict)
+
+        blacklist_jpg = ['title', 'subject', 'creator', 'description']
+        for val in jpg_desc:  # for JPG files
+            for keys2 in list(val):
+                keyRegZ = re.sub(r'{.*}', '', str(keys2.tag))
+                if keyRegZ not in blacklist_jpg and keyRegZ in commons_data:
+                    if keys2.text != '\n' and keys2.tag:
+                        commons_data[keyRegZ] = keys2.text
+
+        for descAttri in tree.findall('rdf:RDF/rdf:Description', namespaces=nmspdict):  # For JPG and TIF files (
+            # description)
             zipped = zip(descAttri.attrib.keys(), descAttri.attrib.values())
             for keyZ, valZ in zipped:
                 keyRegZ = re.sub(r'{.*}', '', keyZ)
@@ -251,15 +294,21 @@ class Client:
 
         return commons_data
 
-    def media_upload(self, metadata, commons, file_type):
+    def media_upload(self, metadata, commons, file_ending=".tif", user_summary=""):
         """
-        handle_upload
-        @param metadata: All of the choosen metadata from the tif image.
+        media_upload
+        @param metadata: All of the choosen metadata from the image.
         @type metadata: dict
         @param commons: site that is used for upload
         @type commons: pywikibot.site.APISite
+        @param file_ending: Type of image file. Valid options: .tif or .jpg
+        @type file_ending: str
+        @param user_summary: Summary for the image upload
+        @type user_summary: str
         """
-        countryTrans = {'norge': 'Norway', 'sverige': 'Sweden', 'finland': 'Finland', 'danmark': 'Denmark'}  # 20.06.
+        file_ending_local = file_ending.lower()
+
+        countryTrans = {'norge': 'Norway', 'sverige': 'Sweden', 'finland': 'Finland', 'danmark': 'Denmark'}
         dateFix = parser.parse(metadata['DateCreated']).isoformat()[0:10] if len(metadata['DateCreated']) > 4 else \
             metadata['DateCreated']
         unknownValues = ['Country', 'State', 'City']
@@ -277,10 +326,10 @@ class Client:
                 metadata['keywords'][seq] = metadata['keywords'][seq].lower()
 
         url = [metadata['href']]
-        summary = "[[Commons:Bots/Requests/IngeniousBot 2|TEST UPLOAD]]"
+        summary = user_summary
         keep_filename = False
         always = True
-        use_filename = '{} ({}){}'.format(metadata['title'], metadata['UserDefined223'],file_type)
+        use_filename = '{} ({}){}'.format(metadata['title'], metadata['UserDefined223'], file_ending_local)
         filename_prefix = None
         verify_description = True
         ignore_warning = True
@@ -289,27 +338,30 @@ class Client:
         recursive = False
         description_file = None
         description = '''=={{int:filedesc}}==
-{{Information
-|description     = {{nb|1= Bildet er hentet fra Arkivverket.\n'''
-        description += '''{0}
-* Arkivinstitusjon: {1}
-* Arkivnavn: {2}
-* Sted: {3}
-* Emneord: {4}
-* Avbildet:
-        '''.format(metadata['desc'], metadata['CustomField17'], metadata['CustomField18'],
-                   ', '.join(filter(None, [metadata['City'], metadata['State'], metadata['Country']])),
-                   ', '.join(filter(None, metadata['keywords'])))
-        description += '}}\n'
-        description += '|date            = {{ISOdate|' + dateFix + '}}\n' if metadata['DateCreated'] and metadata[
-            'DateCreated'] != '' else '|date            = \n'
-        description += '|source          = [{0} foto.digitalarkivet.no]<br/>Arkivreferanse: {1}'.format(
-            metadata['source'], metadata['IF22a_aksesjonsnummer']) + '<br/>{{institution:Arkivverket}}\n'
-        description += '|author          = {{creator:unknown}}' if metadata['creator'] and 'Ukjent' in metadata[
-            'creator'] else '|author          = ' + ', '.join(filter(None, metadata['creator']))
+{{Photograph
+|description        = {{nb|1= Bildet er hentet fra Arkivverket.<br/>\n'''
+        description += metadata['desc'] + '}}\n'
+        description += '|title              = {}\n'.format(metadata['title'])
+        description += '|depicted place     = {}\n'.format(
+            ', '.join(filter(None, [metadata['City'], metadata['State'], metadata['Country']])))
+        description += '|date               = {{ISOdate|' + dateFix + '}}\n' if metadata['DateCreated'] and metadata[
+            'DateCreated'] != '' else '|date               = \n'
+        description += '|institution        = {}\n'.format(metadata['CustomField17'])
+        description += '|department         = {}\n'.format('{{institution:Arkivverket}}')
+        description += '|accession number   = {}\n'.format(metadata['IF22a_aksesjonsnummer'])
+        description += '|notes              = {{nb | 1 = ' + '{}'.format(', '.join(
+            filter(None, metadata['keywords']))) + ' }}\n' if "keywords" in metadata else '|notes              = \n'
+        description += '|object history     = {{nb | 1 = ' + metadata[
+            'CustomField18'] + ' }}\n' if 'CustomField18' in metadata else '|object history     = '
+        description += '|source             = [{0} foto.digitalarkivet.no]\n'.format(metadata['source'])
+        description += '|photographer       = {{creator:unknown}}' if metadata['creator'] and 'Ukjent' in metadata[
+            'creator'] else '|photographer       = ' + ', '.join(filter(None, metadata['creator']))
         description += '''
-|permission      =
-|other_versions  =
+|depicted people    =
+|permission         =
+|other_versions     =
+|wikidata           =
+|camera coord       =
 }}
 
 =={{int:license-header}}==
@@ -321,14 +373,22 @@ class Client:
                 else:
                     description += self.Licenses[license_meta.lower()]
 
-        description += '[[Category:{} (Arkivverket)]]'.format(metadata['CustomField18']) if metadata[
-                                                                                                'CustomField18'] and \
-                                                                                            metadata[
-                                                                                                'CustomField18'] != '' else '[[Category:Media from the National Archives of Norway]]'
+        description += '[[Category:{} (Arkivverket)]]\n'.format(metadata['CustomField18']) if metadata[
+                                                                                                  'CustomField18'] and \
+                                                                                              metadata[
+                                                                                                  'CustomField18'] != \
+                                                                                              '' else '[[Category' \
+                                                                                                      ':Media ' \
+                                                                                                      'from the ' \
+                                                                                                      'National ' \
+                                                                                                      'Archives of ' \
+                                                                                                      'Norway]] '
         description += '[[Category:{} in {}]]'.format(dateFix[0:4],
-                                                      countryTrans[metadata['Country'].lower()]) if dateFix and \
-                                                                                                    metadata[
-                                                                                                        'Country'].lower() in countryTrans else ''
+                                                      countryTrans[metadata[
+                                                          'Country'].lower()]) if dateFix and \
+                                                                                  metadata[
+                                                                                      'Country'].lower() \
+                                                                                  in countryTrans else ''
         if metadata['UserDefined233'].lower() == 'ja':
             self.dont_upload.append(metadata['source'])
 
@@ -343,11 +403,11 @@ class Client:
                 if page.text == description:
                     return 0  # Exists
                 elif pywikibot.Page(commons, 'File:{} ({}) {}{}'.format(metadata['title'], metadata['UserDefined223'],
-                                                                          number_file, file_type)).exists():
+                                                                        number_file, file_ending_local)).exists():
                     number_file += 1
                 else:
                     use_filename = '{} ({}) {}{}'.format(metadata['title'], metadata['UserDefined223'], number_file,
-                                                                            file_type)
+                                                         file_ending_local)
                     do_not_exist = False
             else:
                 do_not_exist = False
@@ -359,41 +419,45 @@ class Client:
                           always=always, summary=summary,
                           filename_prefix=filename_prefix, target_site=commons)
         bot.run()
-
-    def handle_upload(self, page_list, size, commons):
+        
+    def handle_upload(self, page_list, commons, file_ending="tif", summary=""):
         """
         handle_upload
         @param page_list: 4 or less images for "self.pages"
         @type page_list: list
-        @param size: Size for the image. Most be in "self.Size". Default "tif".
-        @type size: str
         @param commons: site that is used for upload
         @type commons: pywikibot.site.APISite
+        @param file_ending: Size for the image. Most be in "self.Size". Default "tif".
+        @type file_ending: str
+        @param summary: Upload comment for each image. Allows Wikitext. Default None.
+        @type summary: str
         """
-        location = self._post(page_list, size)
+        location = self._post(page_list, self.Size[file_ending])
         result = self._get(location)
-        file_type = self.File_Ending[size]
 
         for img in result['job']['result']['files']:
-            meta = self.get_metadata(img['src'], img['href'])
-            self.media_upload(meta, commons, file_type)
-        return 0
+            meta = self.get_metadata(img['src'], img['href'], file_ending)
+            self.media_upload(meta, commons, self.File_ending[file_ending], summary)
 
-    def upload(self, summary, size="tif", commons):
+    def upload(self, commons, file_ending="tif", summary=""):
         """
         upload
-        @param summary: Summary for each upload. Can be in wiki-syntax
-        @type data: str
-        @param size: Size for the image. Most be in "self.Size". Default "tif".
-        @type size: str
         @param commons: site that is used for upload
         @type commons: pywikibot.site.APISite
+        @param file_ending: Size for the image. Most be in "self.Size". Default "tif".
+        @type file_ending: str
+        @param summary: Upload comment for each image. Allows Wikitext. Default None.
+        @type summary: str
         """
-        if self.pages and size in self.Size:
+        if self.pages and file_ending in self.File_ending:
             for num, val in enumerate(self.pages, start=1):
                 if num % 4 == 0:
-                    self.handle_upload(self.pages[num - 4:num], size, commons)
+                    self.handle_upload(self.pages[num - 4:num], commons, file_ending, summary)
                 elif val == self.pages[-1]:
-                    self.handle_upload(self.pages[(len(self.pages) % 4) * -1::], size, commons)
+                    self.handle_upload(self.pages[(len(self.pages) % 4) * -1::], commons, file_ending, summary)
             print("Done")
             return 0
+        else:
+            raise TypeError(
+                f"File type is out of the scope or there is nothing to upload."
+            )
