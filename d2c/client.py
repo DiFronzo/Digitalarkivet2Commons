@@ -101,6 +101,9 @@ class Client:
         @type query: str
         @param limit: Max amount of pages to check for images.
         @type limit: int
+
+        :return: return True if success
+        :rtype: the return type bool
         """
         is_last = False
         pagenr = 0
