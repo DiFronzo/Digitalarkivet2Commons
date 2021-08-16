@@ -8,11 +8,19 @@ Prerequisites:
  - requests
  - pywikibot
 ```
+`pip3 install -r requirements.txt`
 
 # Terms and conditions
 By using this program, you consent to Digitalarkivet's terms and conditions: The CC licenses state the terms that apply to the use of the photograph. We ask that the terms of use to be respected. Photographer, license and conservation institution must in all cases be credited. (original: CC-lisensene angir hvilke vilkår som gjelder for videre bruk av fotografiet. Vi ber om at vilkårene for bruk respekteres. Fotograf, rettighetshaver og bevaringsinstitusjon skal i alle tilfeller krediteres).
 
 Use this script on your own risk.
+
+
+## User Account
+
+The script must be run from a Wikimedia Commons account with the `upload_by_url` user right.
+On Wikimedia Commons this is limited to users with one of the `image-reviewer`,
+`bot`, `gwtoolset` or `sysop` flags. [Apply for bot rights](https://commons.wikimedia.org/wiki/Commons:Bots/Requests).
 
 # Usage
 The program only works for images under https://foto.digitalarkivet.no/fotoweb/.
