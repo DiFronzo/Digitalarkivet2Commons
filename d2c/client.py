@@ -137,7 +137,7 @@ class Client:
             else:
                 url = self.urlDA + data['paging']['next']
             # break
-        self.pages = list_files
+        self.pages = list(dict.fromkeys(list_files))  # remove duplicates
 
     def _post(self, page_list, size):
         """
