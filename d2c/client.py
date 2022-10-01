@@ -15,7 +15,7 @@ name = "Digitalarkivet2Commons"
 api_version = 'v1'
 user_agent = "{} {}".format(name, api_version)
 
-script_version = '1.0.0'
+script_version = '1.0.1'
 
 
 class Client:
@@ -63,10 +63,16 @@ class Client:
         'cc by-sa': "{{CC BY-SA 4.0}}",
     }
 
-    Size = {
+    SizeOld = {
         "small_jpg": "/__renditions/Liten%20JPG",
         "tif": "/__renditions/Originalfil%20(tif)",
         "big_jpg": "/__renditions/Stor%20JPG",
+    }
+    
+    Size = {
+        "small_jpg": "/__renditions/cb53ad28-fc46-445d-9bed-3fce5bf0570d",
+        "tif": "/__renditions/06df8390-99b9-478a-87c9-939148dba0a0",
+        "big_jpg": "/__renditions/7e57641d-85a1-47b3-9637-0f2db54b49ea",
     }
 
     File_ending = {
@@ -150,6 +156,9 @@ class Client:
         response = self._S.post(self.urlDA + '/fotoweb/me/background-tasks/', headers=self.headersPost,
                                 data=json.dumps(data))
         rdata = response.json()
+        if "message" in rdata:
+            raise TypeError(rdata["message"])
+            
         if rdata["location"]:
             return rdata["location"]
 
