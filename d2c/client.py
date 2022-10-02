@@ -356,11 +356,14 @@ class Client:
 
         depicted_place = ', '.join(filter(None, [metadata['City'], metadata['State'], metadata['Country']]))
 
+        use_filename = '{} ({}){}'.format(metadata['title'], metadata['digitalarkivetName'], file_ending_local).strip()
+        if metadata['title'] == "":
+            use_filename = '{}{}'.format(metadata['digitalarkivetName'], file_ending_local).strip()            
+        
         url = [metadata['href']]
         summary = user_summary
         keep_filename = False
         always = True
-        use_filename = '{} ({}){}'.format(metadata['title'], metadata['digitalarkivetName'], file_ending_local)
         filename_prefix = None
         verify_description = True
         ignore_warning = True
