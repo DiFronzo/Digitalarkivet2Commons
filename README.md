@@ -1,5 +1,5 @@
 # Digitalarkivet2Commons
-Easily upload single and multiple files from Digitalarkivet to Wikimedia Commons.
+ Easily upload a single or multiple files from foto.digitalarkivet.no to Wikimedia Commons. 
 ```
 Prerequisites:
 - Python 3.5 or higher
@@ -15,18 +15,17 @@ By using this program, you consent to Digitalarkivet's terms and conditions: The
 
 Use this script on your own risk.
 
-
 ## User Account
 
-The script must be run from a Wikimedia Commons account with the `upload_by_url` user right.
+The script must be run from a Wikimedia account with the `upload_by_url` user right.
 On Wikimedia Commons this is limited to users with one of the `image-reviewer`,
 `bot`, `gwtoolset` or `sysop` flags. [Apply for bot rights](https://commons.wikimedia.org/wiki/Commons:Bots/Requests).
 
 # Usage
 The program only works for images under https://foto.digitalarkivet.no/fotoweb/.
 
-For usage on x.upload the following values are allowed:
-* `file_ending` has to be ether `tif, small_jpg or big_jpg`.
+For usage on function upload() the following values are allowed:
+* `file_ending` has to be either `tif, small_jpg or big_jpg`.
 * `summary` is required to be set.
 
 ```py
